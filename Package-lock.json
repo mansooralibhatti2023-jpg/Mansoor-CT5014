@@ -1,0 +1,1 @@
+Use the file share in the whatapps group   5..Add Package.json file with data {   "name": "nodejs-hello-world",   "version": "1.0.0",   "description": "A simple Node.js project for GitHub Actions",   "main": "index.js",   "scripts": {     "start": "node index.js",     "test": "jest"   },   "devDependencies": {     "jest": "^29.7.0"   },   "author": "",   "license": "ISC" } 

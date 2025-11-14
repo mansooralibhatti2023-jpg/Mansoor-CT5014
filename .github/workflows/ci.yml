@@ -1,0 +1,77 @@
+name: CI / SAST / Docker Build & Push
+
+on:
+  push:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18'        # change if you need a different Node version
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/ct5014-${{ github.actor | toLower }}  # fallback image name
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+        # Jest will run the test suite (index.test.js). Make sure the server exports as instructed.
+
+      - name: Run Snyk security scan (SAST / OSS)
+        # Use the Snyk Node action; requires SNYK_TOKEN in repository secrets
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          # default command is 'test'; use 'monitor' to send results to Snyk project (optional)
+          args: test --severity-threshold=low
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          # Use Git tag name if this run was triggered by a tag, otherwise use short SHA
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "IMAGE_TAG=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          else
+            SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+            echo "IMAGE_TAG=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/ct5014:${{ steps.tag.outputs.IMAGE_TAG }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/ct5014:latest
+
+      - name: Print pushed image info
+        run: |
+          echo "Pushed images:"
+          echo "${{ secrets.DOCKERHUB_USERNAME }}/ct5014:${{ steps.tag.outputs.IMAGE_TAG }}"
+          echo "${{ secrets.DOCKERHUB_USERNAME }}/ct5014:latest"
